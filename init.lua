@@ -1,4 +1,7 @@
 vim.cmd 'source ~/.config/.vimrc'
+vim.keymap.set('n', '<leader>cp', function()
+  vim.fn.setreg('+', vim.fn.expand '%')
+end, { desc = 'Copy full file path' })
 -- vim.o.winborder = 'rounded'
 -- vim.lsp.util.open_floating_preview.Opts
 vim.opt.colorcolumn = '120'
@@ -720,18 +723,16 @@ require('lazy').setup({
         severity_sort = true,
         float = { border = 'rounded', source = 'if_many' },
         underline = { severity = { vim.diagnostic.severity.ERROR, vim.diagnostic.severity.WARN, vim.diagnostic.severity.INFO, vim.diagnostic.severity.HINT } },
-        signs = vim.g.have_nerd_font
-            and {
-              text = {
-                [vim.diagnostic.severity.ERROR] = '󰅚 ',
-                [vim.diagnostic.severity.WARN] = '󰀪 ',
-                [vim.diagnostic.severity.INFO] = '󰋽 ',
-                [vim.diagnostic.severity.HINT] = '󰌶 ',
-              },
-              severity = { vim.diagnostic.severity.ERROR, vim.diagnostic.severity.INFO, vim.diagnostic.severity.HINT },
-              -- numhl = { [vim.diagnostic.severity.WARN] = 'WarningMsg' },
-            }
-          or {},
+        signs = vim.g.have_nerd_font and {
+          text = {
+            [vim.diagnostic.severity.ERROR] = '󰅚 ',
+            [vim.diagnostic.severity.WARN] = '󰀪 ',
+            [vim.diagnostic.severity.INFO] = '󰋽 ',
+            [vim.diagnostic.severity.HINT] = '󰌶 ',
+          },
+          severity = { vim.diagnostic.severity.ERROR, vim.diagnostic.severity.INFO, vim.diagnostic.severity.HINT },
+          -- numhl = { [vim.diagnostic.severity.WARN] = 'WarningMsg' },
+        } or {},
         virtual_text = {
           source = 'if_many',
           spacing = 2,
@@ -830,12 +831,14 @@ require('lazy').setup({
       }
 
       for server_name, server in pairs(servers) do
-        vim.lsp.config(server_name, vim.tbl_deep_extend('force', server, {
-          capabilities = vim.tbl_deep_extend('force', {}, capabilities, server.capabilities or {}),
-          offset_encoding = server.offset_encoding or 'utf-8',
-        }))
+        vim.lsp.config(
+          server_name,
+          vim.tbl_deep_extend('force', server, {
+            capabilities = vim.tbl_deep_extend('force', {}, capabilities, server.capabilities or {}),
+            offset_encoding = server.offset_encoding or 'utf-8',
+          })
+        )
       end
-
     end,
   },
 
