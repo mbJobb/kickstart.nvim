@@ -1,4 +1,5 @@
 vim.cmd 'source ~/.config/.vimrc'
+vim.keymap.set('n', '<leader>git', '/D<CR><cmd>nohlsearch<CR>vt_yggpA: ')
 vim.keymap.set('n', '<leader>cp', function()
   vim.fn.setreg('+', vim.fn.expand '%')
 end, { desc = 'Copy full file path' })
@@ -237,6 +238,7 @@ vim.keymap.set('t', '<C-h>', '<C-\\><C-n><C-w><C-h>', { desc = 'Move focus to th
 vim.keymap.set('t', '<C-l>', '<C-\\><C-n><C-w><C-l>', { desc = 'Move focus to the right window' })
 vim.keymap.set('t', '<C-j>', '<C-\\><C-n><C-w><C-j>', { desc = 'Move focus to the lower window' })
 vim.keymap.set('t', '<C-k>', '<C-\\><C-n><C-w><C-k>', { desc = 'Move focus to the upper window' })
+vim.keymap.set('t', '<F12>', '<cmd>ToggleTerm direction=float<cr>', { desc = 'Move focus to the upper window' })
 -- NOTE: Some terminals have colliding keymaps or are not able to send distinct keycodes
 -- vim.keymap.set("n", "<C-S-h>", "<C-w>H", { desc = "Move window to the left" })
 -- vim.keymap.set("n", "<C-S-l>", "<C-w>L", { desc = "Move window to the right" })
@@ -576,24 +578,6 @@ require('lazy').setup({
         group = vim.api.nvim_create_augroup('kickstart-groovyls-settings', { clear = true }),
         callback = function(args)
           local client = vim.lsp.get_client_by_id(args.data.client_id)
-          if client and client.name == 'groovyls' then
-            client.notify('workspace/didChangeConfiguration', {
-              settings = {
-                groovy = {
-                  files = {
-                    exclude = {
-                      '**/verification/outcomes/**',
-                      '**/build*/**',
-                      '**/outcomes/**',
-                    },
-                  },
-                  -- groovyls bundles Groovy 4.0.26; use matching version to avoid class
-                  -- conflicts between the compiler's GroovyClassLoader and the JVM classpath
-                  classpath = vim.fn.glob('/home/mab9/.sdkman/candidates/groovy/4.0.26/lib/*.jar', false, true),
-                },
-              },
-            })
-          end
         end,
       })
 
@@ -610,7 +594,7 @@ require('lazy').setup({
             vim.keymap.set(mode, keys, func, { buffer = event.buf, desc = 'LSP: ' .. desc })
           end
 
-          -- map('K', vim.lsp.buf.hover, 'Show info', 'n')
+          map('K', vim.lsp.buf.hover, 'Show info', 'n')
           -- vim.keymap.set('n', 'K', vim.lsp.util.open_floating.preview, { opts = { border = 'rounded' } })
 
           local orig_util_open_floating_preview = vim.lsp.util.open_floating_preview
@@ -765,7 +749,24 @@ require('lazy').setup({
       --        For example, to see the options for `lua_ls`, you could go to: https://luals.github.io/wiki/settings/
       local servers = {
         clangd = {},
-        groovyls = {},
+        groovyls = {
+          on_init = function(client, _initialize_result)
+            client.notify('workspace/didChangeConfiguration', {
+              settings = {
+                groovy = {
+                  classpath = vim.fn.glob('~/.sdkman/candidates/groovy/4.0.26/lib/*.jar', false, true),
+                  files = {
+                    exclude = {
+                      '**/verification/outcomes/**',
+                      '**/build*/**',
+                      '**/outcomes/**',
+                    },
+                  },
+                },
+              },
+            })
+          end,
+        },
         -- gopls = {},
         -- pyright = {},
         ruff = {
@@ -894,6 +895,9 @@ require('lazy').setup({
     event = 'VimEnter',
     version = '1.*',
     dependencies = {
+      -- nvim-cmp sources (e.g. cmp-jenkinsfile GDSL) via shim + registry; see :h blink.compat
+      { 'saghen/blink.compat', version = '2.*', opts = {} },
+      'joshzcold/cmp-jenkinsfile',
       -- Snippet Engine
       {
         'L3MON4D3/LuaSnip',
@@ -966,9 +970,27 @@ require('lazy').setup({
       },
 
       sources = {
-        default = { 'lsp', 'path', 'snippets', 'lazydev' },
+        default = { 'lsp', 'path', 'snippets', 'lazydev', 'jenkinsfile' },
         providers = {
           lazydev = { module = 'lazydev.integrations.blink', score_offset = 100 },
+          jenkinsfile = {
+            name = 'jenkinsfile',
+            module = 'blink.compat.source',
+            ---GDSL completion is noisy outside Jenkins pipelines; keep it off generic Groovy.
+            enabled = function()
+              if vim.bo.filetype ~= 'groovy' then
+                return false
+              end
+              local tail = vim.fn.fnamemodify(vim.api.nvim_buf_get_name(0), ':t'):lower()
+              return tail == 'jenkinsfile' or tail:match '%.jenkinsfile$' ~= nil
+            end,
+            score_offset = 3,
+            ---Passed to cmp-jenkinsfile as nvim-cmp `option`: empty jenkins_url = read gdsl_file only.
+            opts = {
+              jenkins_url = vim.env.JENKINS_URL or '',
+              gdsl_file = vim.fn.expand '~/.cache/nvim/cmp-jenkinsfile.gdsl',
+            },
+          },
         },
       },
 
@@ -1061,7 +1083,21 @@ require('lazy').setup({
       -- cursor location to LINE:COLUMN
       ---@diagnostic disable-next-line: duplicate-set-field
       statusline.section_location = function()
-        return '%2l:%-2v'
+        return '%2l:%-2v %p%%'
+      end
+
+      ---@diagnostic disable-next-line: duplicate-set-field
+      statusline.section_git = function(args)
+        local head = vim.b.gitsigns_head or ''
+        if head == '' then
+          return ''
+        end
+        head = head:gsub('^develop/', ''):sub(1, 30)
+        local signs = vim.b.gitsigns_status or ''
+        if signs ~= '' then
+          return head .. ' ' .. signs
+        end
+        return head
       end
 
       -- ... and there is more!
@@ -1096,6 +1132,13 @@ require('lazy').setup({
     --    - Incremental selection: Included, see `:help nvim-treesitter-incremental-selection-mod`
     --    - Show your current context: https://github.com/nvim-treesitter/nvim-treesitter-context
     --    - Treesitter + textobjects: https://github.com/nvim-treesitter/nvim-treesitter-textobjects
+  },
+  {
+    'akinsho/toggleterm.nvim',
+    version = '*',
+    -- config = true,
+    opts = { shell = 'zsh' },
+    keys = { { '<F12>', '<cmd>ToggleTerm direction=float<cr>', desc = 'Toggle floating terminal' } },
   },
 
   -- The following comments only work if you have downloaded the kickstart repo, not just copy pasted the
